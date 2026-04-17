@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MapQuest Route Finder</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Courier New', monospace;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      padding: 30px 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #58a6ff;
+      font-size: 1.6rem;
+      margin-bottom: 6px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    p.sub {
+      text-align: center;
+      color: #8b949e;
+      font-size: 0.8rem;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      max-width: 700px;
+      margin: 0 auto 24px;
+    }
+    label { display: block; margin-bottom: 4px; color: #8b949e; font-size: 0.8rem; }
+    input {
+      width: 100%;
+      padding: 9px 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-family: inherit;
+      font-size: 0.9rem;
+      margin-bottom: 14px;
+    }
+    input:focus { outline: none; border-color: #58a6ff; }
+    .row { display: flex; gap: 14px; }
+    .row > div { flex: 1; }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    button:hover { background: #2ea043; }
+    button:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+
+    .note {
+      background: #1c2128;
+      border-left: 3px solid #d29922;
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      color: #d29922;
+      border-radius: 4px;
+      margin-bottom: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th {
+      background: #21262d;
+      color: #58a6ff;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #30363d;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #21262d;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    tr:last-child td { border-bottom: none; }
+    .key { color: #8b949e; width: 35%; }
+    .val { color: #e6edf3; }
+    .section-title {
+      font-size: 0.75rem;
+      color: #58a6ff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 18px 0 8px;
+    }
+    .error { color: #f85149; font-size: 0.85rem; padding: 10px 0; }
+    .hidden { display: none; }
+    #map {
+      width: 100%;
+      height: 300px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🗺 MapQuest Route Finder</h1>
+<p class="sub">Enter locations to get route info via MapQuest API</p>
+
+<div class="card">
+
+  <div class="row">
+    <div>
+      <label>Starting Location</label>
+      <input type="text" id="from" placeholder="e.g. Manila, Philippines" />
+    </div>
+    <div>
+      <label>Destination</label>
+      <input type="text" id="to" placeholder="e.g. Cebu City, Philippines" />
+    </div>
+  </div>
+  <button id="btn" onclick="getRoute()">Get Route</button>
+  <div id="error" class="error hidden"></div>
+</div>
+
+<div class="card hidden" id="result-card">
+  <p class="section-title">📤 API Request (Inputs)</p>
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+    <tbody id="req-table"></tbody>
+  </table>
+
+  <p class="section-title">📥 API Response (Outputs)</p>
+  <table>
+    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+    <tbody id="res-table"></tbody>
+  </table>
+
+  <p class="section-title">🗺 Map Preview</p>
+  <img id="map" alt="Route Map" />
+</div>
+
+<script>
+  const API_KEY = "Ca04kVNLR7kqwbv8v7qMJMPBVKAcPUey";
+
+  async function getRoute() {
+    const from = document.getElementById("from").value.trim();
+    const to = document.getElementById("to").value.trim();
+    const err = document.getElementById("error");
+    const btn = document.getElementById("btn");
+
+    err.classList.add("hidden");
+    if (!from || !to) { showErr("Please enter both locations."); return; }
+
+    btn.disabled = true;
+    btn.textContent = "Loading...";
+
+    // Show request inputs
+    setTable("req-table", [
+      ["API Endpoint", "https://www.mapquestapi.com/directions/v2/route"],
+      ["from (origin)", from],
+      ["to (destination)", to],
+      ["unit", "k (kilometers)"],
+      ["routeType", "fastest"]
+    ]);
+
+    try {
+      const url = `https://www.mapquestapi.com/directions/v2/route?key=${API_KEY}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&unit=k&routeType=fastest`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.info.statuscode !== 0) {
+        showErr("API Error: " + (data.info.messages[0] || "Unknown error."));
+        return;
+      }
+
+      const r = data.route;
+      setTable("res-table", [
+        ["Status Code", data.info.statuscode],
+        ["From (Formatted)", r.locations[0].adminArea5 + ", " + r.locations[0].adminArea1],
+        ["To (Formatted)", r.locations[1].adminArea5 + ", " + r.locations[1].adminArea1],
+        ["Distance (km)", r.distance.toFixed(2)],
+        ["Duration (mins)", (r.time / 60).toFixed(1)],
+        ["Formatted Time", r.formattedTime],
+        ["Fuel Used (L)", r.fuelUsed ? r.fuelUsed.toFixed(2) : "N/A"],
+        ["Has Toll Road", r.hasTollRoad ? "Yes" : "No"],
+        ["Has Highway", r.hasHighway ? "Yes" : "No"],
+        ["Has Ferry", r.hasFerry ? "Yes" : "No"],
+        ["Route Shape Points", r.shape?.shapePoints?.length ?? "N/A"],
+        ["Session ID", r.sessionId]
+      ]);
+
+      // Static map image
+      document.getElementById("map").src =
+        `https://www.mapquestapi.com/staticmap/v5/map?key=${API_KEY}&size=660,300&type=map&locations=${encodeURIComponent(from)}|marker-start||${encodeURIComponent(to)}|marker-end`;
+
+      document.getElementById("result-card").classList.remove("hidden");
+
+    } catch (e) {
+      showErr("Network error: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Get Route";
+    }
+  }
+
+  function setTable(id, rows) {
+    document.getElementById(id).innerHTML = rows.map(
+      ([k, v]) => `<tr><td class="key">${k}</td><td class="val">${v}</td></tr>`
+    ).join("");
+  }
+
+  function showErr(msg) {
+    const err = document.getElementById("error");
+    err.textContent = msg;
+    err.classList.remove("hidden");
+    document.getElementById("btn").disabled = false;
+    document.getElementById("btn").textContent = "Get Route";
+  }
+</script>
+</body>
+</html>
